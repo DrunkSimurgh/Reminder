@@ -1,0 +1,94 @@
+name: Build Reminder
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-windows:
+    name: Build Windows executable
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Lazarus
+        uses: ollydev/setup-lazarus@v4
+
+      - name: Build project
+        shell: cmd
+        run: |
+          lazbuild src/reminder.lpi --build-mode=Release
+
+      - name: Collect Windows artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist
+          Get-ChildItem -Recurse -Filter "*.exe" | Copy-Item -Destination dist
+
+      - name: Upload Windows executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: reminder-windows
+          path: dist/*.exe
+
+  build-ubuntu-linux:
+    name: Build Ubuntu Linux executable
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install Lazarus
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lazarus
+
+      - name: Build project
+        run: |
+          lazbuild src/reminder.lpi --build-mode=Release
+
+      - name: Collect Ubuntu Linux artifact
+        run: |
+          mkdir -p dist
+          find . -type f -executable -name "reminder" -exec cp {} dist/ \;
+
+      - name: Upload Ubuntu Linux executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: reminder-ubuntu-linux
+          path: dist/reminder
+
+  build-rocky-linux:
+    name: Build Rocky Linux executable
+    runs-on: ubuntu-latest
+    container:
+      image: rockylinux:9
+
+    steps:
+      - name: Install build tools
+        run: |
+          dnf -y update
+          dnf -y install epel-release
+          dnf -y install git make gcc fpc lazarus
+
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Build project
+        run: |
+          lazbuild src/reminder.lpi --build-mode=Release
+
+      - name: Collect Rocky Linux artifact
+        run: |
+          mkdir -p dist
+          find . -type f -executable -name "reminder" -exec cp {} dist/ \;
+
+      - name: Upload Rocky Linux executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: reminder-rocky-linux-9
+          path: dist/reminder
