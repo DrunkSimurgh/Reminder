@@ -47,7 +47,12 @@ begin
     H := StrToInt(Copy(AValue, 12, 2));
     N := StrToInt(Copy(AValue, 15, 2));
     S := StrToInt(Copy(AValue, 18, 2));
-    Result := TryEncodeDateTime(Y, M, D, H, N, S, 0, ADateTime);
+    if (M < 1) or (M > 12) or (D < 1) or (D > 31) or
+       (H > 23) or (N > 59) or (S > 59) then
+      Exit;
+
+    ADateTime := EncodeDate(Y, M, D) + EncodeTime(H, N, S, 0);
+    Result := True;
   except
     Result := False;
   end;

@@ -21,3 +21,8 @@ lazbuild src/reminder.lpi --build-mode=Release
 ```
 
 The executable is written to `build/reminder` or `build/reminder.exe`.
+
+
+## Build fix notes
+
+This revision removes use of `TryEncodeDateTime`, which is not available in the Free Pascal versions used by the GitHub runners, and switches the Windows workflow to `gcarreno/setup-lazarus` so `lazbuild` is added to PATH.
