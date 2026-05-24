@@ -8,8 +8,8 @@ uses
   {$ENDIF}
   Interfaces,
   Forms,
-  MainForm;
-
+  MainForm,
+  StatusForm;
 
 begin
   RequireDerivedFormResource := False;

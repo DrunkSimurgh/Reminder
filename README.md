@@ -1,28 +1,19 @@
 # Reminder
 
-A small Lazarus/Free Pascal desktop reminder app inspired by an older Delphi tray reminder project.
+A Lazarus/Free Pascal rewrite of the original Delphi `watch out!` reminder app, renamed to **Reminder** with the default alarm name/window title **Look Away!**.
 
-The default main window title is **Look Away!**.
+This version intentionally restores the original two-window behavior:
 
-## Features in this starter version
+- main settings form with the original preset buttons: 5, 10, 15, 20, 30, 40 minutes, 1 hour, 2 hours
+- manual minute/hour postponing
+- exact date/time scheduling
+- 20-second beep test button
+- second borderless status form showing the next alarm time
+- main form hides after a reminder is chosen
+- tray icon while a reminder is active
+- stop/hide/exit behavior
+- stay-on-top behavior for both forms
+- fade behavior on the second form
+- saved reminder state via an INI config file
 
-- Preset reminders: 5, 10, 15, 30 minutes; 1, 2, 4, 8 hours
-- Custom minutes
-- Exact date/time input using `yyyy-mm-dd hh:mm:ss`
-- Periodic due-time checking instead of one huge timer interval
-- Saved reminder state using the platform app config file
-- Tray icon with Show, Stop, and Exit menu items
-- GitHub Actions build workflow for Windows, Ubuntu Linux, and Rocky Linux 9
-
-## Build locally, optional
-
-```bash
-lazbuild src/reminder.lpi --build-mode=Release
-```
-
-The executable is written to `build/reminder` or `build/reminder.exe`.
-
-
-## Build fix notes
-
-This revision removes use of `TryEncodeDateTime`, which is not available in the Free Pascal versions used by the GitHub runners, and switches the Windows workflow to `gcarreno/setup-lazarus` so `lazbuild` is added to PATH.
+Builds are handled by GitHub Actions for Windows, Ubuntu Linux, and Rocky Linux 9.

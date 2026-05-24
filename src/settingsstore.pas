@@ -27,7 +27,10 @@ end;
 
 class function TSettingsStore.DateTimeToStableString(const AValue: TDateTime): string;
 begin
-  Result := FormatDateTime('yyyy"-"mm"-"dd hh":"nn":"ss', AValue);
+  if AValue <= 0 then
+    Result := ''
+  else
+    Result := FormatDateTime('yyyy"-"mm"-"dd hh":"nn":"ss', AValue);
 end;
 
 class function TSettingsStore.TryStableStringToDateTime(const AValue: string; out ADateTime: TDateTime): Boolean;
@@ -61,22 +64,25 @@ end;
 class procedure TSettingsStore.LoadInto(const Alarm: TAlarmService);
 var
   Ini: TIniFile;
-  DueText: string;
-  DueAt: TDateTime;
+  DueText, ActivatedText: string;
+  ADateTime: TDateTime;
 begin
   Ini := TIniFile.Create(SettingsFileName);
   try
     Alarm.Name := Ini.ReadString('Reminder', 'Name', 'Look Away!');
     Alarm.Active := Ini.ReadBool('Reminder', 'Active', False);
+
     DueText := Ini.ReadString('Reminder', 'DueAt', '');
-
-    if TryStableStringToDateTime(DueText, DueAt) then
-      Alarm.DueAt := DueAt
+    if TryStableStringToDateTime(DueText, ADateTime) then
+      Alarm.DueAt := ADateTime
     else
-      Alarm.Active := False;
+      Alarm.DueAt := 0;
 
-    if Alarm.Active and (Alarm.DueAt <= Now) then
-      Alarm.Active := False;
+    ActivatedText := Ini.ReadString('Reminder', 'ActivatedAt', '');
+    if TryStableStringToDateTime(ActivatedText, ADateTime) then
+      Alarm.ActivatedAt := ADateTime
+    else
+      Alarm.ActivatedAt := 0;
   finally
     Ini.Free;
   end;
@@ -91,6 +97,7 @@ begin
     Ini.WriteString('Reminder', 'Name', Alarm.Name);
     Ini.WriteBool('Reminder', 'Active', Alarm.Active);
     Ini.WriteString('Reminder', 'DueAt', DateTimeToStableString(Alarm.DueAt));
+    Ini.WriteString('Reminder', 'ActivatedAt', DateTimeToStableString(Alarm.ActivatedAt));
     Ini.UpdateFile;
   finally
     Ini.Free;

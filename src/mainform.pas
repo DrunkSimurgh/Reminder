@@ -5,39 +5,50 @@ unit MainForm;
 interface
 
 uses
-  Classes, SysUtils, Forms, Controls, StdCtrls, ExtCtrls, Menus, Dialogs,
-  AlarmService, SettingsStore;
+  Classes, SysUtils, Forms, Controls, StdCtrls, ExtCtrls, Dialogs, Spin,
+  DateUtils, DateTimeCtrls, AlarmService, SettingsStore, StatusForm;
 
 type
   TMainForm = class(TForm)
   private
     FAlarm: TAlarmService;
+    FStatusForm: TStatusForm;
     FCheckTimer: TTimer;
-    FTrayIcon: TTrayIcon;
-    FTrayMenu: TPopupMenu;
+    FBeepTestTimer: TTimer;
+    FAllowClose: Boolean;
 
     FNameEdit: TEdit;
-    FStatusLabel: TLabel;
-    FExactTimeEdit: TEdit;
-    FCustomMinutesEdit: TEdit;
+    FManualSpin: TSpinEdit;
+    FDatePicker: TDateTimePicker;
+    FTimePicker: TDateTimePicker;
+    FActivatedLabel: TLabel;
+    FScheduledLabel: TLabel;
 
     procedure BuildUi;
-    procedure BuildTrayIcon;
-    procedure AddPresetButton(const ACaption: string; const AMinutes: Integer; const ALeft, ATop: Integer);
+    function AddPresetButton(const ACaption: string; const ASeconds: Integer; const ALeft, ATop: Integer): TButton;
     procedure PresetButtonClick(Sender: TObject);
-    procedure CustomMinutesClick(Sender: TObject);
-    procedure ExactTimeClick(Sender: TObject);
-    procedure StopClick(Sender: TObject);
+    procedure ManualMinutesClick(Sender: TObject);
+    procedure ManualHoursClick(Sender: TObject);
+    procedure ExactOkClick(Sender: TObject);
+    procedure BeepTestClick(Sender: TObject);
+    procedure BeepTestTimerTick(Sender: TObject);
+    procedure ExitClick(Sender: TObject);
     procedure CheckTimerTick(Sender: TObject);
-    procedure TrayIconClick(Sender: TObject);
-    procedure TrayShowClick(Sender: TObject);
-    procedure TrayStopClick(Sender: TObject);
-    procedure TrayExitClick(Sender: TObject);
-    procedure StartAfterMinutes(const AMinutes: Integer);
-    procedure StartAtExactTime(const AText: string);
+    procedure NameEditChange(Sender: TObject);
+    procedure FormClickHandler(Sender: TObject);
+    procedure StatusShowSettings(Sender: TObject);
+    procedure StatusStopReminder(Sender: TObject);
+    procedure StatusExitApp(Sender: TObject);
+    procedure StartAfterSeconds(const ASeconds: Integer);
+    procedure StartAtExactPickerTime;
+    procedure ShowRunningReminder;
     procedure TriggerReminder;
-    procedure UpdateStatus;
+    procedure StopReminder(const AShowMain: Boolean);
+    procedure ResetPickers;
+    procedure RefreshLabels;
     function CleanReminderName: string;
+  protected
+    procedure DoClose(var CloseAction: TCloseAction); override;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
@@ -52,22 +63,38 @@ constructor TMainForm.Create(AOwner: TComponent);
 begin
   inherited CreateNew(AOwner, 1);
 
+  FAllowClose := False;
+
   FAlarm := TAlarmService.Create;
   TSettingsStore.LoadInto(FAlarm);
 
+  FStatusForm := TStatusForm.Create(Self);
+  FStatusForm.OnShowSettings := @StatusShowSettings;
+  FStatusForm.OnStopReminder := @StatusStopReminder;
+  FStatusForm.OnExitApp := @StatusExitApp;
+
   BuildUi;
-  BuildTrayIcon;
 
   FCheckTimer := TTimer.Create(Self);
   FCheckTimer.Interval := 1000;
   FCheckTimer.OnTimer := @CheckTimerTick;
   FCheckTimer.Enabled := True;
 
-  UpdateStatus;
+  FBeepTestTimer := TTimer.Create(Self);
+  FBeepTestTimer.Interval := 20000;
+  FBeepTestTimer.OnTimer := @BeepTestTimerTick;
+  FBeepTestTimer.Enabled := False;
+
+  ResetPickers;
+  RefreshLabels;
+
+  if FAlarm.Active and (FAlarm.DueAt > Now) then
+    ShowRunningReminder;
 end;
 
 destructor TMainForm.Destroy;
 begin
+  FStatusForm.HideTrayIcon;
   TSettingsStore.SaveFrom(FAlarm);
   FAlarm.Free;
   inherited Destroy;
@@ -75,173 +102,228 @@ end;
 
 procedure TMainForm.BuildUi;
 var
-  StopButton, CustomButton, ExactButton: TButton;
-  InfoLabel, NameLabel, CustomLabel, ExactLabel: TLabel;
+  NameLabel, OrLabel, ActivatedTitle, ScheduledTitle: TLabel;
+  PresetGroup, ManualGroup: TGroupBox;
+  TestButton, ExitButton, MinButton, HourButton, OkButton: TButton;
+  Panel1, Panel2: TPanel;
 begin
   Caption := 'Look Away!';
-  Width := 430;
-  Height := 355;
+  Width := 464;
+  Height := 330;
   Position := poScreenCenter;
-  BorderStyle := bsSingle;
+  BorderStyle := bsDialog;
+  FormStyle := fsStayOnTop;
+  OnClick := @FormClickHandler;
 
   NameLabel := TLabel.Create(Self);
   NameLabel.Parent := Self;
-  NameLabel.Caption := 'Reminder name:';
-  NameLabel.Left := 18;
-  NameLabel.Top := 18;
+  NameLabel.Caption := 'Alarm Name:';
+  NameLabel.Left := 61;
+  NameLabel.Top := 15;
 
   FNameEdit := TEdit.Create(Self);
   FNameEdit.Parent := Self;
-  FNameEdit.Left := 18;
-  FNameEdit.Top := 40;
-  FNameEdit.Width := 380;
+  FNameEdit.Left := 130;
+  FNameEdit.Top := 12;
+  FNameEdit.Width := 187;
+  FNameEdit.MaxLength := 30;
   FNameEdit.Text := FAlarm.Name;
+  FNameEdit.OnChange := @NameEditChange;
 
-  InfoLabel := TLabel.Create(Self);
-  InfoLabel.Parent := Self;
-  InfoLabel.Caption := 'Quick reminders:';
-  InfoLabel.Left := 18;
-  InfoLabel.Top := 78;
+  PresetGroup := TGroupBox.Create(Self);
+  PresetGroup.Parent := Self;
+  PresetGroup.Left := 61;
+  PresetGroup.Top := 40;
+  PresetGroup.Width := 346;
+  PresetGroup.Height := 80;
+  PresetGroup.Caption := 'Predefined postpone methods';
 
-  AddPresetButton('5 min', 5, 18, 100);
-  AddPresetButton('10 min', 10, 112, 100);
-  AddPresetButton('15 min', 15, 206, 100);
-  AddPresetButton('30 min', 30, 300, 100);
-  AddPresetButton('1 hour', 60, 18, 138);
-  AddPresetButton('2 hours', 120, 112, 138);
-  AddPresetButton('4 hours', 240, 206, 138);
-  AddPresetButton('8 hours', 480, 300, 138);
+  AddPresetButton('5 minutes', 5 * SecsPerMin, 15, 20).Parent := PresetGroup;
+  AddPresetButton('10 minutes', 10 * SecsPerMin, 95, 20).Parent := PresetGroup;
+  AddPresetButton('15 minutes', 15 * SecsPerMin, 175, 20).Parent := PresetGroup;
+  AddPresetButton('20 minutes', 20 * SecsPerMin, 255, 20).Parent := PresetGroup;
+  AddPresetButton('30 minutes', 30 * SecsPerMin, 15, 50).Parent := PresetGroup;
+  AddPresetButton('40 minutes', 40 * SecsPerMin, 95, 50).Parent := PresetGroup;
+  AddPresetButton('1 hour', 60 * SecsPerMin, 175, 50).Parent := PresetGroup;
+  AddPresetButton('2 hours', 120 * SecsPerMin, 255, 50).Parent := PresetGroup;
 
-  CustomLabel := TLabel.Create(Self);
-  CustomLabel.Parent := Self;
-  CustomLabel.Caption := 'Custom minutes:';
-  CustomLabel.Left := 18;
-  CustomLabel.Top := 185;
+  ManualGroup := TGroupBox.Create(Self);
+  ManualGroup.Parent := Self;
+  ManualGroup.Left := 48;
+  ManualGroup.Top := 120;
+  ManualGroup.Width := 369;
+  ManualGroup.Height := 105;
+  ManualGroup.Caption := 'Manual postpone';
 
-  FCustomMinutesEdit := TEdit.Create(Self);
-  FCustomMinutesEdit.Parent := Self;
-  FCustomMinutesEdit.Left := 118;
-  FCustomMinutesEdit.Top := 180;
-  FCustomMinutesEdit.Width := 80;
-  FCustomMinutesEdit.Text := '20';
+  Panel1 := TPanel.Create(Self);
+  Panel1.Parent := ManualGroup;
+  Panel1.Left := 25;
+  Panel1.Top := 15;
+  Panel1.Width := 325;
+  Panel1.Height := 33;
+  Panel1.BevelOuter := bvLowered;
 
-  CustomButton := TButton.Create(Self);
-  CustomButton.Parent := Self;
-  CustomButton.Caption := 'Start custom';
-  CustomButton.Left := 214;
-  CustomButton.Top := 178;
-  CustomButton.Width := 110;
-  CustomButton.OnClick := @CustomMinutesClick;
+  FManualSpin := TSpinEdit.Create(Self);
+  FManualSpin.Parent := ManualGroup;
+  FManualSpin.Left := 70;
+  FManualSpin.Top := 20;
+  FManualSpin.Width := 47;
+  FManualSpin.MinValue := 1;
+  FManualSpin.MaxValue := 1000;
+  FManualSpin.Value := 1;
 
-  ExactLabel := TLabel.Create(Self);
-  ExactLabel.Parent := Self;
-  ExactLabel.Caption := 'Exact time: yyyy-mm-dd hh:mm:ss';
-  ExactLabel.Left := 18;
-  ExactLabel.Top := 225;
+  MinButton := TButton.Create(Self);
+  MinButton.Parent := ManualGroup;
+  MinButton.Left := 130;
+  MinButton.Top := 20;
+  MinButton.Width := 100;
+  MinButton.Height := 25;
+  MinButton.Caption := 'minute(s) (enter)';
+  MinButton.OnClick := @ManualMinutesClick;
 
-  FExactTimeEdit := TEdit.Create(Self);
-  FExactTimeEdit.Parent := Self;
-  FExactTimeEdit.Left := 18;
-  FExactTimeEdit.Top := 247;
-  FExactTimeEdit.Width := 190;
-  FExactTimeEdit.Text := FormatDateTime('yyyy"-"mm"-"dd hh":"nn":"ss', Now + (20 / (24 * 60)));
+  HourButton := TButton.Create(Self);
+  HourButton.Parent := ManualGroup;
+  HourButton.Left := 240;
+  HourButton.Top := 20;
+  HourButton.Width := 75;
+  HourButton.Height := 25;
+  HourButton.Caption := 'hour(s)';
+  HourButton.OnClick := @ManualHoursClick;
 
-  ExactButton := TButton.Create(Self);
-  ExactButton.Parent := Self;
-  ExactButton.Caption := 'Start exact';
-  ExactButton.Left := 224;
-  ExactButton.Top := 245;
-  ExactButton.Width := 100;
-  ExactButton.OnClick := @ExactTimeClick;
+  OrLabel := TLabel.Create(Self);
+  OrLabel.Parent := ManualGroup;
+  OrLabel.Left := 12;
+  OrLabel.Top := 55;
+  OrLabel.Caption := 'or:';
 
-  StopButton := TButton.Create(Self);
-  StopButton.Parent := Self;
-  StopButton.Caption := 'Stop reminder';
-  StopButton.Left := 18;
-  StopButton.Top := 285;
-  StopButton.Width := 130;
-  StopButton.OnClick := @StopClick;
+  Panel2 := TPanel.Create(Self);
+  Panel2.Parent := ManualGroup;
+  Panel2.Left := 25;
+  Panel2.Top := 45;
+  Panel2.Width := 325;
+  Panel2.Height := 57;
+  Panel2.BevelOuter := bvLowered;
 
-  FStatusLabel := TLabel.Create(Self);
-  FStatusLabel.Parent := Self;
-  FStatusLabel.Left := 165;
-  FStatusLabel.Top := 289;
-  FStatusLabel.Width := 240;
-  FStatusLabel.Caption := 'No active reminder.';
+  FDatePicker := TDateTimePicker.Create(Self);
+  FDatePicker.Parent := ManualGroup;
+  FDatePicker.Left := 30;
+  FDatePicker.Top := 50;
+  FDatePicker.Width := 211;
+  FDatePicker.Height := 21;
+  FDatePicker.Kind := dtkDate;
+  FDatePicker.Date := Date;
+
+  FTimePicker := TDateTimePicker.Create(Self);
+  FTimePicker.Parent := ManualGroup;
+  FTimePicker.Left := 247;
+  FTimePicker.Top := 50;
+  FTimePicker.Width := 95;
+  FTimePicker.Height := 21;
+  FTimePicker.Kind := dtkTime;
+  FTimePicker.Time := Time;
+
+  OkButton := TButton.Create(Self);
+  OkButton.Parent := ManualGroup;
+  OkButton.Left := 268;
+  OkButton.Top := 75;
+  OkButton.Width := 75;
+  OkButton.Height := 25;
+  OkButton.Caption := 'OK';
+  OkButton.OnClick := @ExactOkClick;
+
+  TestButton := TButton.Create(Self);
+  TestButton.Parent := Self;
+  TestButton.Left := 173;
+  TestButton.Top := 230;
+  TestButton.Width := 106;
+  TestButton.Height := 25;
+  TestButton.Caption := '20 seconds beep';
+  TestButton.OnClick := @BeepTestClick;
+
+  ExitButton := TButton.Create(Self);
+  ExitButton.Parent := Self;
+  ExitButton.Left := 381;
+  ExitButton.Top := 231;
+  ExitButton.Width := 75;
+  ExitButton.Height := 25;
+  ExitButton.Caption := 'Exit';
+  ExitButton.OnClick := @ExitClick;
+
+  ScheduledTitle := TLabel.Create(Self);
+  ScheduledTitle.Parent := Self;
+  ScheduledTitle.Left := 5;
+  ScheduledTitle.Top := 260;
+  ScheduledTitle.Caption := 'Scheduled time:';
+
+  FScheduledLabel := TLabel.Create(Self);
+  FScheduledLabel.Parent := Self;
+  FScheduledLabel.Left := 85;
+  FScheduledLabel.Top := 260;
+  FScheduledLabel.Caption := '-';
+
+  ActivatedTitle := TLabel.Create(Self);
+  ActivatedTitle.Parent := Self;
+  ActivatedTitle.Left := 5;
+  ActivatedTitle.Top := 275;
+  ActivatedTitle.Caption := 'Activated on:';
+
+  FActivatedLabel := TLabel.Create(Self);
+  FActivatedLabel.Parent := Self;
+  FActivatedLabel.Left := 70;
+  FActivatedLabel.Top := 275;
+  FActivatedLabel.Caption := '-';
 end;
 
-procedure TMainForm.BuildTrayIcon;
-var
-  Item: TMenuItem;
+function TMainForm.AddPresetButton(const ACaption: string; const ASeconds: Integer; const ALeft, ATop: Integer): TButton;
 begin
-  FTrayMenu := TPopupMenu.Create(Self);
-
-  Item := TMenuItem.Create(FTrayMenu);
-  Item.Caption := 'Show Reminder';
-  Item.OnClick := @TrayShowClick;
-  FTrayMenu.Items.Add(Item);
-
-  Item := TMenuItem.Create(FTrayMenu);
-  Item.Caption := 'Stop Reminder';
-  Item.OnClick := @TrayStopClick;
-  FTrayMenu.Items.Add(Item);
-
-  FTrayMenu.Items.AddSeparator;
-
-  Item := TMenuItem.Create(FTrayMenu);
-  Item.Caption := 'Exit';
-  Item.OnClick := @TrayExitClick;
-  FTrayMenu.Items.Add(Item);
-
-  FTrayIcon := TTrayIcon.Create(Self);
-  FTrayIcon.Hint := 'Reminder - Look Away!';
-  FTrayIcon.PopupMenu := FTrayMenu;
-  FTrayIcon.OnClick := @TrayIconClick;
-  FTrayIcon.Visible := True;
-end;
-
-procedure TMainForm.AddPresetButton(const ACaption: string; const AMinutes: Integer; const ALeft, ATop: Integer);
-var
-  Button: TButton;
-begin
-  Button := TButton.Create(Self);
-  Button.Parent := Self;
-  Button.Caption := ACaption;
-  Button.Left := ALeft;
-  Button.Top := ATop;
-  Button.Width := 80;
-  Button.Tag := AMinutes;
-  Button.OnClick := @PresetButtonClick;
+  Result := TButton.Create(Self);
+  Result.Caption := ACaption;
+  Result.Left := ALeft;
+  Result.Top := ATop;
+  Result.Width := 75;
+  Result.Height := 25;
+  Result.Tag := ASeconds;
+  Result.OnClick := @PresetButtonClick;
 end;
 
 procedure TMainForm.PresetButtonClick(Sender: TObject);
 begin
-  StartAfterMinutes((Sender as TButton).Tag);
+  StartAfterSeconds((Sender as TButton).Tag);
 end;
 
-procedure TMainForm.CustomMinutesClick(Sender: TObject);
-var
-  Minutes: Integer;
+procedure TMainForm.ManualMinutesClick(Sender: TObject);
 begin
-  if not TryStrToInt(Trim(FCustomMinutesEdit.Text), Minutes) then
-  begin
-    ShowMessage('Please enter a whole number of minutes.');
-    Exit;
-  end;
-
-  StartAfterMinutes(Minutes);
+  StartAfterSeconds(FManualSpin.Value * SecsPerMin);
 end;
 
-procedure TMainForm.ExactTimeClick(Sender: TObject);
+procedure TMainForm.ManualHoursClick(Sender: TObject);
 begin
-  StartAtExactTime(FExactTimeEdit.Text);
+  StartAfterSeconds(FManualSpin.Value * SecsPerHour);
 end;
 
-procedure TMainForm.StopClick(Sender: TObject);
+procedure TMainForm.ExactOkClick(Sender: TObject);
 begin
-  FAlarm.Stop;
-  TSettingsStore.SaveFrom(FAlarm);
-  UpdateStatus;
+  StartAtExactPickerTime;
+end;
+
+procedure TMainForm.BeepTestClick(Sender: TObject);
+begin
+  FBeepTestTimer.Enabled := False;
+  FManualSpin.SetFocus;
+  FBeepTestTimer.Enabled := True;
+end;
+
+procedure TMainForm.BeepTestTimerTick(Sender: TObject);
+begin
+  Beep;
+  FBeepTestTimer.Enabled := False;
+end;
+
+procedure TMainForm.ExitClick(Sender: TObject);
+begin
+  FAllowClose := True;
+  FStatusForm.HideTrayIcon;
+  Close;
 end;
 
 procedure TMainForm.CheckTimerTick(Sender: TObject);
@@ -249,28 +331,38 @@ begin
   if FAlarm.IsDue then
     TriggerReminder;
 
-  UpdateStatus;
+  RefreshLabels;
 end;
 
-procedure TMainForm.TrayIconClick(Sender: TObject);
+procedure TMainForm.NameEditChange(Sender: TObject);
+begin
+  Caption := CleanReminderName;
+  FStatusForm.Caption := CleanReminderName;
+end;
+
+procedure TMainForm.FormClickHandler(Sender: TObject);
+begin
+  FManualSpin.SetFocus;
+end;
+
+procedure TMainForm.StatusShowSettings(Sender: TObject);
 begin
   Show;
   WindowState := wsNormal;
+  FormStyle := fsStayOnTop;
   BringToFront;
+  FManualSpin.SetFocus;
 end;
 
-procedure TMainForm.TrayShowClick(Sender: TObject);
+procedure TMainForm.StatusStopReminder(Sender: TObject);
 begin
-  TrayIconClick(Sender);
+  StopReminder(True);
 end;
 
-procedure TMainForm.TrayStopClick(Sender: TObject);
+procedure TMainForm.StatusExitApp(Sender: TObject);
 begin
-  StopClick(Sender);
-end;
-
-procedure TMainForm.TrayExitClick(Sender: TObject);
-begin
+  FAllowClose := True;
+  FStatusForm.HideTrayIcon;
   Close;
 end;
 
@@ -281,84 +373,146 @@ begin
     Result := 'Look Away!';
 end;
 
-procedure TMainForm.StartAfterMinutes(const AMinutes: Integer);
+procedure TMainForm.StartAfterSeconds(const ASeconds: Integer);
 begin
   try
-    FAlarm.StartAfterMinutes(AMinutes, CleanReminderName);
+    FAlarm.StartAfterSeconds(ASeconds, CleanReminderName);
     TSettingsStore.SaveFrom(FAlarm);
-    UpdateStatus;
+    ShowRunningReminder;
   except
     on E: Exception do
+    begin
+      Beep;
       ShowMessage(E.Message);
+    end;
   end;
 end;
 
-procedure TMainForm.StartAtExactTime(const AText: string);
+procedure TMainForm.StartAtExactPickerTime;
 var
   DueAt: TDateTime;
-  Y, M, D, H, N, S: Word;
-  InputText: string;
 begin
-  InputText := Trim(AText);
-  if Length(InputText) <> 19 then
-  begin
-    ShowMessage('Please use this format: yyyy-mm-dd hh:mm:ss');
-    Exit;
-  end;
-
   try
-    Y := StrToInt(Copy(InputText, 1, 4));
-    M := StrToInt(Copy(InputText, 6, 2));
-    D := StrToInt(Copy(InputText, 9, 2));
-    H := StrToInt(Copy(InputText, 12, 2));
-    N := StrToInt(Copy(InputText, 15, 2));
-    S := StrToInt(Copy(InputText, 18, 2));
-
-    DueAt := EncodeDate(Y, M, D) + EncodeTime(H, N, S, 0);
-
+    DueAt := DateOf(FDatePicker.Date) + TimeOf(FTimePicker.Time);
     FAlarm.StartAt(DueAt, CleanReminderName);
     TSettingsStore.SaveFrom(FAlarm);
-    UpdateStatus;
+    ShowRunningReminder;
   except
     on E: Exception do
+    begin
+      Beep;
       ShowMessage(E.Message);
+      ResetPickers;
+    end;
   end;
+end;
+
+procedure TMainForm.ShowRunningReminder;
+begin
+  RefreshLabels;
+  Hide;
+  FStatusForm.ShowNextAlarm(FAlarm.Name, FAlarm.DueAt, FAlarm.SecondsRemaining);
 end;
 
 procedure TMainForm.TriggerReminder;
 begin
   FAlarm.Stop;
   TSettingsStore.SaveFrom(FAlarm);
-  UpdateStatus;
+
+  FStatusForm.Hide;
+  FStatusForm.HideTrayIcon;
+  RefreshLabels;
+  ResetPickers;
 
   Beep;
   Show;
   WindowState := wsNormal;
+  FormStyle := fsStayOnTop;
   BringToFront;
-  ShowMessage(FAlarm.Name);
+  FManualSpin.Value := 1;
+  FManualSpin.SetFocus;
 end;
 
-procedure TMainForm.UpdateStatus;
-var
-  Seconds, Minutes, Hours: Int64;
+procedure TMainForm.StopReminder(const AShowMain: Boolean);
 begin
-  if not FAlarm.Active then
+  FAlarm.Stop;
+  TSettingsStore.SaveFrom(FAlarm);
+  FStatusForm.Hide;
+  FStatusForm.HideTrayIcon;
+  RefreshLabels;
+  ResetPickers;
+
+  if AShowMain then
   begin
-    FStatusLabel.Caption := 'No active reminder.';
-    FTrayIcon.Hint := 'Reminder - no active reminder';
-    Exit;
+    Show;
+    WindowState := wsNormal;
+    FormStyle := fsStayOnTop;
+    BringToFront;
+  end;
+end;
+
+procedure TMainForm.ResetPickers;
+var
+  NextValue: TDateTime;
+begin
+  NextValue := IncMinute(Now, 1);
+  FDatePicker.Date := DateOf(NextValue);
+  FTimePicker.Time := TimeOf(NextValue);
+end;
+
+procedure TMainForm.RefreshLabels;
+var
+  LateSeconds, Days, Hours, Minutes, Seconds: Int64;
+  LateText: string;
+begin
+  if FAlarm.ActivatedAt > 0 then
+    FActivatedLabel.Caption := TimeToStr(FAlarm.ActivatedAt) + ', ' + DateToStr(FAlarm.ActivatedAt)
+  else
+    FActivatedLabel.Caption := TimeToStr(Now) + ', ' + DateToStr(Now);
+
+  if FAlarm.DueAt > 0 then
+    FScheduledLabel.Caption := TimeToStr(FAlarm.DueAt) + ', ' + DateToStr(FAlarm.DueAt)
+  else
+    FScheduledLabel.Caption := '-';
+
+  FActivatedLabel.Font.Color := clBlack;
+  LateSeconds := FAlarm.SecondsLate;
+  if (not FAlarm.Active) and (FAlarm.DueAt > 0) and (LateSeconds > 2) then
+  begin
+    Days := LateSeconds div SecsPerDay;
+    LateSeconds := LateSeconds mod SecsPerDay;
+    Hours := LateSeconds div SecsPerHour;
+    LateSeconds := LateSeconds mod SecsPerHour;
+    Minutes := LateSeconds div SecsPerMin;
+    Seconds := LateSeconds mod SecsPerMin;
+
+    LateText := '';
+    if Days > 0 then LateText := LateText + Format('%d day(s), ', [Days]);
+    if Hours > 0 then LateText := LateText + Format('%d hour(s), ', [Hours]);
+    if Minutes > 0 then LateText := LateText + Format('%d minute(s), ', [Minutes]);
+    if Seconds > 0 then LateText := LateText + Format('%d second(s) late', [Seconds]);
+
+    if LateText <> '' then
+    begin
+      FActivatedLabel.Font.Color := clRed;
+      FActivatedLabel.Caption := TimeToStr(Now) + ', ' + DateToStr(Now) + ' (' + LateText + ')';
+    end;
   end;
 
-  Seconds := FAlarm.SecondsRemaining;
-  Hours := Seconds div 3600;
-  Seconds := Seconds mod 3600;
-  Minutes := Seconds div 60;
-  Seconds := Seconds mod 60;
+  if FAlarm.Active then
+    FStatusForm.UpdateTrayHint(FAlarm.Name + '; next alarm time: ' + TimeToStr(FAlarm.DueAt));
+end;
 
-  FStatusLabel.Caption := Format('Due %s  (%d:%2.2d:%2.2d left)', [
-    FormatDateTime('yyyy-mm-dd hh:nn:ss', FAlarm.DueAt), Hours, Minutes, Seconds
-  ]);
-  FTrayIcon.Hint := 'Reminder due at ' + FormatDateTime('yyyy-mm-dd hh:nn:ss', FAlarm.DueAt);
+procedure TMainForm.DoClose(var CloseAction: TCloseAction);
+begin
+  if (not FAllowClose) and Visible and FAlarm.Active then
+  begin
+    CloseAction := caNone;
+    Hide;
+    FStatusForm.HideToTray;
+  end
+  else
+    inherited DoClose(CloseAction);
 end;
 
 end.
