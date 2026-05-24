@@ -15,24 +15,25 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Lazarus
-        uses: ollydev/setup-lazarus@v4
+        uses: gcarreno/setup-lazarus@v3
+        with:
+          lazarus-version: "stable"
+          with-cache: false
+
+      - name: Show Lazarus version
+        shell: pwsh
+        run: lazbuild --version
 
       - name: Build project
-        shell: cmd
-        run: |
-          lazbuild src/reminder.lpi --build-mode=Release
-
-      - name: Collect Windows artifact
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path dist
-          Get-ChildItem -Recurse -Filter "*.exe" | Copy-Item -Destination dist
+          lazbuild -B --bm=Release src/reminder.lpi
 
       - name: Upload Windows executable
         uses: actions/upload-artifact@v4
         with:
           name: reminder-windows
-          path: dist/*.exe
+          path: build/reminder.exe
 
   build-ubuntu-linux:
     name: Build Ubuntu Linux executable
@@ -49,18 +50,13 @@ jobs:
 
       - name: Build project
         run: |
-          lazbuild src/reminder.lpi --build-mode=Release
-
-      - name: Collect Ubuntu Linux artifact
-        run: |
-          mkdir -p dist
-          find . -type f -executable -name "reminder" -exec cp {} dist/ \;
+          lazbuild -B --bm=Release src/reminder.lpi
 
       - name: Upload Ubuntu Linux executable
         uses: actions/upload-artifact@v4
         with:
           name: reminder-ubuntu-linux
-          path: dist/reminder
+          path: build/reminder
 
   build-rocky-linux:
     name: Build Rocky Linux executable
@@ -80,15 +76,10 @@ jobs:
 
       - name: Build project
         run: |
-          lazbuild src/reminder.lpi --build-mode=Release
-
-      - name: Collect Rocky Linux artifact
-        run: |
-          mkdir -p dist
-          find . -type f -executable -name "reminder" -exec cp {} dist/ \;
+          lazbuild -B --bm=Release src/reminder.lpi
 
       - name: Upload Rocky Linux executable
         uses: actions/upload-artifact@v4
         with:
           name: reminder-rocky-linux-9
-          path: dist/reminder
+          path: build/reminder
