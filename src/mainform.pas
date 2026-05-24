@@ -6,7 +6,7 @@ interface
 
 uses
   Classes, SysUtils, Forms, Controls, Graphics, StdCtrls, ExtCtrls, Dialogs, Spin,
-  DateUtils, DateTimeCtrls, AlarmService, SettingsStore, StatusForm
+  DateUtils, AlarmService, SettingsStore, StatusForm
   {$IFDEF MSWINDOWS}, Windows{$ENDIF};
 
 type
@@ -20,8 +20,12 @@ type
 
     FNameEdit: TEdit;
     FManualSpin: TSpinEdit;
-    FDatePicker: TDateTimePicker;
-    FTimePicker: TDateTimePicker;
+    FYearSpin: TSpinEdit;
+    FMonthSpin: TSpinEdit;
+    FDaySpin: TSpinEdit;
+    FHourSpin: TSpinEdit;
+    FMinuteSpin: TSpinEdit;
+    FSecondSpin: TSpinEdit;
     FKeepOnTopTimer: TTimer;
     FActivatedLabel: TLabel;
     FScheduledLabel: TLabel;
@@ -120,7 +124,7 @@ var
 begin
   Caption := 'Look Away!';
   Width := 500;
-  Height := 350;
+  Height := 385;
   Position := poScreenCenter;
   BorderStyle := bsDialog;
   FormStyle := fsStayOnTop;
@@ -163,7 +167,7 @@ begin
   ManualGroup.Left := 48;
   ManualGroup.Top := 145;
   ManualGroup.Width := 400;
-  ManualGroup.Height := 112;
+  ManualGroup.Height := 145;
   ManualGroup.Caption := 'Manual postpone';
 
   Panel1 := TPanel.Create(Self);
@@ -213,7 +217,7 @@ begin
   Panel2.Left := 25;
   Panel2.Top := 53;
   Panel2.Width := 350;
-  Panel2.Height := 52;
+  Panel2.Height := 84;
   Panel2.BevelOuter := bvLowered;
 
   DateInputLabel := TLabel.Create(Self);
@@ -222,33 +226,71 @@ begin
   DateInputLabel.Top := 65;
   DateInputLabel.Caption := 'Date:';
 
-  FDatePicker := TDateTimePicker.Create(Self);
-  FDatePicker.Parent := ManualGroup;
-  FDatePicker.Left := 72;
-  FDatePicker.Top := 61;
-  FDatePicker.Width := 125;
-  FDatePicker.Height := 24;
-  FDatePicker.Kind := dtkDate;
+  FYearSpin := TSpinEdit.Create(Self);
+  FYearSpin.Parent := ManualGroup;
+  FYearSpin.Left := 72;
+  FYearSpin.Top := 60;
+  FYearSpin.Width := 70;
+  FYearSpin.MinValue := 1970;
+  FYearSpin.MaxValue := 9999;
+  FYearSpin.OnKeyPress := @NumericKeyPress;
+
+  FMonthSpin := TSpinEdit.Create(Self);
+  FMonthSpin.Parent := ManualGroup;
+  FMonthSpin.Left := 150;
+  FMonthSpin.Top := 60;
+  FMonthSpin.Width := 48;
+  FMonthSpin.MinValue := 1;
+  FMonthSpin.MaxValue := 12;
+  FMonthSpin.OnKeyPress := @NumericKeyPress;
+
+  FDaySpin := TSpinEdit.Create(Self);
+  FDaySpin.Parent := ManualGroup;
+  FDaySpin.Left := 206;
+  FDaySpin.Top := 60;
+  FDaySpin.Width := 48;
+  FDaySpin.MinValue := 1;
+  FDaySpin.MaxValue := 31;
+  FDaySpin.OnKeyPress := @NumericKeyPress;
 
   TimeInputLabel := TLabel.Create(Self);
   TimeInputLabel.Parent := ManualGroup;
-  TimeInputLabel.Left := 206;
-  TimeInputLabel.Top := 65;
+  TimeInputLabel.Left := 34;
+  TimeInputLabel.Top := 99;
   TimeInputLabel.Caption := 'Time:';
 
-  FTimePicker := TDateTimePicker.Create(Self);
-  FTimePicker.Parent := ManualGroup;
-  FTimePicker.Left := 246;
-  FTimePicker.Top := 61;
-  FTimePicker.Width := 92;
-  FTimePicker.Height := 24;
-  FTimePicker.Kind := dtkTime;
+  FHourSpin := TSpinEdit.Create(Self);
+  FHourSpin.Parent := ManualGroup;
+  FHourSpin.Left := 72;
+  FHourSpin.Top := 94;
+  FHourSpin.Width := 48;
+  FHourSpin.MinValue := 0;
+  FHourSpin.MaxValue := 23;
+  FHourSpin.OnKeyPress := @NumericKeyPress;
+
+  FMinuteSpin := TSpinEdit.Create(Self);
+  FMinuteSpin.Parent := ManualGroup;
+  FMinuteSpin.Left := 128;
+  FMinuteSpin.Top := 94;
+  FMinuteSpin.Width := 48;
+  FMinuteSpin.MinValue := 0;
+  FMinuteSpin.MaxValue := 59;
+  FMinuteSpin.OnKeyPress := @NumericKeyPress;
+
+  FSecondSpin := TSpinEdit.Create(Self);
+  FSecondSpin.Parent := ManualGroup;
+  FSecondSpin.Left := 184;
+  FSecondSpin.Top := 94;
+  FSecondSpin.Width := 48;
+  FSecondSpin.MinValue := 0;
+  FSecondSpin.MaxValue := 59;
+  FSecondSpin.OnKeyPress := @NumericKeyPress;
 
   OkButton := TButton.Create(Self);
   OkButton.Parent := ManualGroup;
-  OkButton.Left := 342;
-  OkButton.Top := 60;
-  OkButton.Width := 30;
+  OkButton.Left := 260;
+  OkButton.Top := 93;
+  OkButton.Width := 70;
   OkButton.Height := 26;
   OkButton.Caption := 'OK';
   OkButton.OnClick := @ExactOkClick;
@@ -256,7 +298,7 @@ begin
   TestButton := TButton.Create(Self);
   TestButton.Parent := Self;
   TestButton.Left := 175;
-  TestButton.Top := 264;
+  TestButton.Top := 300;
   TestButton.Width := 120;
   TestButton.Height := 26;
   TestButton.Caption := '20 seconds beep';
@@ -265,7 +307,7 @@ begin
   ExitButton := TButton.Create(Self);
   ExitButton.Parent := Self;
   ExitButton.Left := 402;
-  ExitButton.Top := 264;
+  ExitButton.Top := 300;
   ExitButton.Width := 75;
   ExitButton.Height := 26;
   ExitButton.Caption := 'Exit';
@@ -274,26 +316,26 @@ begin
   ScheduledTitle := TLabel.Create(Self);
   ScheduledTitle.Parent := Self;
   ScheduledTitle.Left := 12;
-  ScheduledTitle.Top := 300;
+  ScheduledTitle.Top := 335;
   ScheduledTitle.Caption := 'Scheduled time:';
 
   FScheduledLabel := TLabel.Create(Self);
   FScheduledLabel.Parent := Self;
   FScheduledLabel.Left := 120;
-  FScheduledLabel.Top := 300;
+  FScheduledLabel.Top := 335;
   FScheduledLabel.Width := 350;
   FScheduledLabel.Caption := '-';
 
   ActivatedTitle := TLabel.Create(Self);
   ActivatedTitle.Parent := Self;
   ActivatedTitle.Left := 12;
-  ActivatedTitle.Top := 318;
+  ActivatedTitle.Top := 353;
   ActivatedTitle.Caption := 'Activated on:';
 
   FActivatedLabel := TLabel.Create(Self);
   FActivatedLabel.Parent := Self;
   FActivatedLabel.Left := 120;
-  FActivatedLabel.Top := 318;
+  FActivatedLabel.Top := 353;
   FActivatedLabel.Width := 350;
   FActivatedLabel.Caption := '-';
 end;
@@ -436,7 +478,7 @@ var
 begin
   try
     if not TryInputDateTime(DueAt) then
-      raise Exception.Create('Please enter the date as YYYY-MM-DD and the time as HH:MM or HH:MM:SS.');
+      raise Exception.Create('Please choose a valid future date and time.');
 
     FAlarm.StartAt(DueAt, CleanReminderName);
     TSettingsStore.SaveFrom(FAlarm);
@@ -455,7 +497,8 @@ function TMainForm.TryInputDateTime(out ADueAt: TDateTime): Boolean;
 begin
   Result := True;
   try
-    ADueAt := DateOf(FDatePicker.DateTime) + TimeOf(FTimePicker.DateTime);
+    ADueAt := EncodeDate(FYearSpin.Value, FMonthSpin.Value, FDaySpin.Value) +
+      EncodeTime(FHourSpin.Value, FMinuteSpin.Value, FSecondSpin.Value, 0);
   except
     ADueAt := 0;
     Result := False;
@@ -510,10 +553,18 @@ end;
 procedure TMainForm.ResetPickers;
 var
   NextValue: TDateTime;
+  Year, Month, Day, Hour, Minute, Second, MilliSecond: Word;
 begin
   NextValue := IncMinute(Now, 1);
-  FDatePicker.DateTime := DateOf(NextValue);
-  FTimePicker.DateTime := TimeOf(NextValue);
+  DecodeDate(NextValue, Year, Month, Day);
+  DecodeTime(NextValue, Hour, Minute, Second, MilliSecond);
+
+  FYearSpin.Value := Year;
+  FMonthSpin.Value := Month;
+  FDaySpin.Value := Day;
+  FHourSpin.Value := Hour;
+  FMinuteSpin.Value := Minute;
+  FSecondSpin.Value := Second;
 end;
 
 procedure TMainForm.RefreshLabels;
