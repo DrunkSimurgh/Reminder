@@ -5,7 +5,7 @@ unit StatusForm;
 interface
 
 uses
-  Classes, SysUtils, Forms, Controls, StdCtrls, ExtCtrls, Menus, DateUtils;
+  Classes, SysUtils, Forms, Controls, Graphics, StdCtrls, ExtCtrls, Menus, DateUtils;
 
 type
   TReminderActionEvent = procedure(Sender: TObject) of object;
