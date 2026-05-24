@@ -6,7 +6,7 @@ interface
 
 uses
   Classes, SysUtils, Forms, Controls, StdCtrls, ExtCtrls, Dialogs, Spin,
-  DateUtils, DateTimeCtrls, AlarmService, SettingsStore, StatusForm;
+  DateUtils, AlarmService, SettingsStore, StatusForm;
 
 type
   TMainForm = class(TForm)
@@ -19,8 +19,8 @@ type
 
     FNameEdit: TEdit;
     FManualSpin: TSpinEdit;
-    FDatePicker: TDateTimePicker;
-    FTimePicker: TDateTimePicker;
+    FDateEdit: TEdit;
+    FTimeEdit: TEdit;
     FActivatedLabel: TLabel;
     FScheduledLabel: TLabel;
 
@@ -41,6 +41,7 @@ type
     procedure StatusExitApp(Sender: TObject);
     procedure StartAfterSeconds(const ASeconds: Integer);
     procedure StartAtExactPickerTime;
+    function TryInputDateTime(out ADueAt: TDateTime): Boolean;
     procedure ShowRunningReminder;
     procedure TriggerReminder;
     procedure StopReminder(const AShowMain: Boolean);
@@ -102,7 +103,7 @@ end;
 
 procedure TMainForm.BuildUi;
 var
-  NameLabel, OrLabel, ActivatedTitle, ScheduledTitle: TLabel;
+  NameLabel, OrLabel, DateInputLabel, TimeInputLabel, ActivatedTitle, ScheduledTitle: TLabel;
   PresetGroup, ManualGroup: TGroupBox;
   TestButton, ExitButton, MinButton, HourButton, OkButton: TButton;
   Panel1, Panel2: TPanel;
@@ -204,23 +205,31 @@ begin
   Panel2.Height := 57;
   Panel2.BevelOuter := bvLowered;
 
-  FDatePicker := TDateTimePicker.Create(Self);
-  FDatePicker.Parent := ManualGroup;
-  FDatePicker.Left := 30;
-  FDatePicker.Top := 50;
-  FDatePicker.Width := 211;
-  FDatePicker.Height := 21;
-  FDatePicker.Kind := dtkDate;
-  FDatePicker.Date := Date;
+  DateInputLabel := TLabel.Create(Self);
+  DateInputLabel.Parent := ManualGroup;
+  DateInputLabel.Left := 32;
+  DateInputLabel.Top := 53;
+  DateInputLabel.Caption := 'Date:';
 
-  FTimePicker := TDateTimePicker.Create(Self);
-  FTimePicker.Parent := ManualGroup;
-  FTimePicker.Left := 247;
-  FTimePicker.Top := 50;
-  FTimePicker.Width := 95;
-  FTimePicker.Height := 21;
-  FTimePicker.Kind := dtkTime;
-  FTimePicker.Time := Time;
+  FDateEdit := TEdit.Create(Self);
+  FDateEdit.Parent := ManualGroup;
+  FDateEdit.Left := 70;
+  FDateEdit.Top := 50;
+  FDateEdit.Width := 116;
+  FDateEdit.Height := 21;
+
+  TimeInputLabel := TLabel.Create(Self);
+  TimeInputLabel.Parent := ManualGroup;
+  TimeInputLabel.Left := 194;
+  TimeInputLabel.Top := 53;
+  TimeInputLabel.Caption := 'Time:';
+
+  FTimeEdit := TEdit.Create(Self);
+  FTimeEdit.Parent := ManualGroup;
+  FTimeEdit.Left := 232;
+  FTimeEdit.Top := 50;
+  FTimeEdit.Width := 110;
+  FTimeEdit.Height := 21;
 
   OkButton := TButton.Create(Self);
   OkButton.Parent := ManualGroup;
@@ -393,7 +402,9 @@ var
   DueAt: TDateTime;
 begin
   try
-    DueAt := DateOf(FDatePicker.Date) + TimeOf(FTimePicker.Time);
+    if not TryInputDateTime(DueAt) then
+      raise Exception.Create('Please enter the date as YYYY-MM-DD and the time as HH:MM or HH:MM:SS.');
+
     FAlarm.StartAt(DueAt, CleanReminderName);
     TSettingsStore.SaveFrom(FAlarm);
     ShowRunningReminder;
@@ -404,6 +415,48 @@ begin
       ShowMessage(E.Message);
       ResetPickers;
     end;
+  end;
+end;
+
+function TMainForm.TryInputDateTime(out ADueAt: TDateTime): Boolean;
+var
+  DateText, TimeText: string;
+  Y, M, D, H, N, Sec: Word;
+begin
+  Result := False;
+  ADueAt := 0;
+  DateText := Trim(FDateEdit.Text);
+  TimeText := Trim(FTimeEdit.Text);
+  Sec := 0;
+
+  try
+    if (Length(DateText) <> 10) or (DateText[5] <> '-') or (DateText[8] <> '-') then
+      Exit;
+
+    if not (Length(TimeText) in [5, 8]) then
+      Exit;
+
+    if (TimeText[3] <> ':') then
+      Exit;
+
+    if (Length(TimeText) = 8) and (TimeText[6] <> ':') then
+      Exit;
+
+    Y := StrToInt(Copy(DateText, 1, 4));
+    M := StrToInt(Copy(DateText, 6, 2));
+    D := StrToInt(Copy(DateText, 9, 2));
+    H := StrToInt(Copy(TimeText, 1, 2));
+    N := StrToInt(Copy(TimeText, 4, 2));
+    if Length(TimeText) = 8 then
+      Sec := StrToInt(Copy(TimeText, 7, 2));
+
+    if (H > 23) or (N > 59) or (Sec > 59) then
+      Exit;
+
+    ADueAt := EncodeDate(Y, M, D) + EncodeTime(H, N, Sec, 0);
+    Result := True;
+  except
+    Result := False;
   end;
 end;
 
@@ -456,8 +509,8 @@ var
   NextValue: TDateTime;
 begin
   NextValue := IncMinute(Now, 1);
-  FDatePicker.Date := DateOf(NextValue);
-  FTimePicker.Time := TimeOf(NextValue);
+  FDateEdit.Text := FormatDateTime('yyyy"-"mm"-"dd', DateOf(NextValue));
+  FTimeEdit.Text := FormatDateTime('hh":"nn":"ss', TimeOf(NextValue));
 end;
 
 procedure TMainForm.RefreshLabels;
