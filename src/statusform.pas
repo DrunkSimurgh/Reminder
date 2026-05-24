@@ -67,7 +67,7 @@ end;
 procedure TStatusForm.BuildUi;
 begin
   Caption := 'Look Away!';
-  Width := 318;
+  Width := 330;
   Height := 155;
   BorderStyle := bsNone;
   Color := clWhite;
@@ -89,7 +89,7 @@ begin
   FGroupBox.Caption := 'next alarm time';
   FGroupBox.Left := 15;
   FGroupBox.Top := 15;
-  FGroupBox.Width := 286;
+  FGroupBox.Width := 300;
   FGroupBox.Height := 121;
   FGroupBox.Color := clCream;
   FGroupBox.ParentColor := False;
@@ -112,7 +112,7 @@ begin
 
   FDateLabel := TLabel.Create(Self);
   FDateLabel.Parent := FGroupBox;
-  FDateLabel.Left := 165;
+  FDateLabel.Left := 175;
   FDateLabel.Top := 54;
   FDateLabel.Caption := DateToStr(Date);
 
@@ -127,7 +127,7 @@ begin
 
   FHideButton := TButton.Create(Self);
   FHideButton.Parent := FGroupBox;
-  FHideButton.Left := 180;
+  FHideButton.Left := 194;
   FHideButton.Top := 86;
   FHideButton.Width := 88;
   FHideButton.Height := 25;
@@ -233,8 +233,9 @@ end;
 
 procedure TStatusForm.FadeTimerTick(Sender: TObject);
 begin
-  if AlphaBlendValue < 170 then
-    FormStyle := fsNormal;
+  // The original app deliberately stayed above other windows until the user acted.
+  // Keep fsStayOnTop even after the fade starts.
+  FormStyle := fsStayOnTop;
 
   if AlphaBlendValue >= 50 then
     AlphaBlendValue := AlphaBlendValue - 1

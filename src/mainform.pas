@@ -6,7 +6,8 @@ interface
 
 uses
   Classes, SysUtils, Forms, Controls, Graphics, StdCtrls, ExtCtrls, Dialogs, Spin,
-  DateUtils, AlarmService, SettingsStore, StatusForm;
+  DateUtils, DateTimeCtrls, AlarmService, SettingsStore, StatusForm
+  {$IFDEF MSWINDOWS}, Windows{$ENDIF};
 
 type
   TMainForm = class(TForm)
@@ -19,8 +20,9 @@ type
 
     FNameEdit: TEdit;
     FManualSpin: TSpinEdit;
-    FDateEdit: TEdit;
-    FTimeEdit: TEdit;
+    FDatePicker: TDateTimePicker;
+    FTimePicker: TDateTimePicker;
+    FKeepOnTopTimer: TTimer;
     FActivatedLabel: TLabel;
     FScheduledLabel: TLabel;
 
@@ -34,8 +36,10 @@ type
     procedure BeepTestTimerTick(Sender: TObject);
     procedure ExitClick(Sender: TObject);
     procedure CheckTimerTick(Sender: TObject);
+    procedure KeepOnTopTimerTick(Sender: TObject);
     procedure NameEditChange(Sender: TObject);
     procedure FormClickHandler(Sender: TObject);
+    procedure NumericKeyPress(Sender: TObject; var Key: char);
     procedure StatusShowSettings(Sender: TObject);
     procedure StatusStopReminder(Sender: TObject);
     procedure StatusExitApp(Sender: TObject);
@@ -47,6 +51,7 @@ type
     procedure StopReminder(const AShowMain: Boolean);
     procedure ResetPickers;
     procedure RefreshLabels;
+    procedure ForceStayOnTop(AForm: TCustomForm);
     function CleanReminderName: string;
   protected
     procedure DoClose(var CloseAction: TCloseAction); override;
@@ -86,6 +91,11 @@ begin
   FBeepTestTimer.OnTimer := @BeepTestTimerTick;
   FBeepTestTimer.Enabled := False;
 
+  FKeepOnTopTimer := TTimer.Create(Self);
+  FKeepOnTopTimer.Interval := 500;
+  FKeepOnTopTimer.OnTimer := @KeepOnTopTimerTick;
+  FKeepOnTopTimer.Enabled := True;
+
   ResetPickers;
   RefreshLabels;
 
@@ -109,8 +119,8 @@ var
   Panel1, Panel2: TPanel;
 begin
   Caption := 'Look Away!';
-  Width := 464;
-  Height := 330;
+  Width := 500;
+  Height := 350;
   Position := poScreenCenter;
   BorderStyle := bsDialog;
   FormStyle := fsStayOnTop;
@@ -119,167 +129,172 @@ begin
   NameLabel := TLabel.Create(Self);
   NameLabel.Parent := Self;
   NameLabel.Caption := 'Alarm Name:';
-  NameLabel.Left := 61;
-  NameLabel.Top := 15;
+  NameLabel.Left := 62;
+  NameLabel.Top := 16;
 
   FNameEdit := TEdit.Create(Self);
   FNameEdit.Parent := Self;
-  FNameEdit.Left := 130;
+  FNameEdit.Left := 135;
   FNameEdit.Top := 12;
-  FNameEdit.Width := 187;
+  FNameEdit.Width := 220;
   FNameEdit.MaxLength := 30;
   FNameEdit.Text := FAlarm.Name;
   FNameEdit.OnChange := @NameEditChange;
 
   PresetGroup := TGroupBox.Create(Self);
   PresetGroup.Parent := Self;
-  PresetGroup.Left := 61;
-  PresetGroup.Top := 40;
-  PresetGroup.Width := 346;
-  PresetGroup.Height := 80;
+  PresetGroup.Left := 48;
+  PresetGroup.Top := 42;
+  PresetGroup.Width := 400;
+  PresetGroup.Height := 96;
   PresetGroup.Caption := 'Predefined postpone methods';
 
-  AddPresetButton('5 minutes', 5 * SecsPerMin, 15, 20).Parent := PresetGroup;
-  AddPresetButton('10 minutes', 10 * SecsPerMin, 95, 20).Parent := PresetGroup;
-  AddPresetButton('15 minutes', 15 * SecsPerMin, 175, 20).Parent := PresetGroup;
-  AddPresetButton('20 minutes', 20 * SecsPerMin, 255, 20).Parent := PresetGroup;
-  AddPresetButton('30 minutes', 30 * SecsPerMin, 15, 50).Parent := PresetGroup;
-  AddPresetButton('40 minutes', 40 * SecsPerMin, 95, 50).Parent := PresetGroup;
-  AddPresetButton('1 hour', 60 * SecsPerMin, 175, 50).Parent := PresetGroup;
-  AddPresetButton('2 hours', 120 * SecsPerMin, 255, 50).Parent := PresetGroup;
+  AddPresetButton('5 minutes', 5 * SecsPerMin, 15, 24).Parent := PresetGroup;
+  AddPresetButton('10 minutes', 10 * SecsPerMin, 110, 24).Parent := PresetGroup;
+  AddPresetButton('15 minutes', 15 * SecsPerMin, 205, 24).Parent := PresetGroup;
+  AddPresetButton('20 minutes', 20 * SecsPerMin, 300, 24).Parent := PresetGroup;
+  AddPresetButton('30 minutes', 30 * SecsPerMin, 15, 60).Parent := PresetGroup;
+  AddPresetButton('40 minutes', 40 * SecsPerMin, 110, 60).Parent := PresetGroup;
+  AddPresetButton('1 hour', 60 * SecsPerMin, 205, 60).Parent := PresetGroup;
+  AddPresetButton('2 hours', 120 * SecsPerMin, 300, 60).Parent := PresetGroup;
 
   ManualGroup := TGroupBox.Create(Self);
   ManualGroup.Parent := Self;
   ManualGroup.Left := 48;
-  ManualGroup.Top := 120;
-  ManualGroup.Width := 369;
-  ManualGroup.Height := 105;
+  ManualGroup.Top := 145;
+  ManualGroup.Width := 400;
+  ManualGroup.Height := 112;
   ManualGroup.Caption := 'Manual postpone';
 
   Panel1 := TPanel.Create(Self);
   Panel1.Parent := ManualGroup;
   Panel1.Left := 25;
-  Panel1.Top := 15;
-  Panel1.Width := 325;
-  Panel1.Height := 33;
+  Panel1.Top := 17;
+  Panel1.Width := 350;
+  Panel1.Height := 34;
   Panel1.BevelOuter := bvLowered;
 
   FManualSpin := TSpinEdit.Create(Self);
   FManualSpin.Parent := ManualGroup;
   FManualSpin.Left := 70;
-  FManualSpin.Top := 20;
-  FManualSpin.Width := 47;
+  FManualSpin.Top := 22;
+  FManualSpin.Width := 55;
   FManualSpin.MinValue := 1;
   FManualSpin.MaxValue := 1000;
   FManualSpin.Value := 1;
+  FManualSpin.OnKeyPress := @NumericKeyPress;
 
   MinButton := TButton.Create(Self);
   MinButton.Parent := ManualGroup;
-  MinButton.Left := 130;
-  MinButton.Top := 20;
-  MinButton.Width := 100;
-  MinButton.Height := 25;
+  MinButton.Left := 135;
+  MinButton.Top := 21;
+  MinButton.Width := 125;
+  MinButton.Height := 26;
   MinButton.Caption := 'minute(s) (enter)';
   MinButton.OnClick := @ManualMinutesClick;
 
   HourButton := TButton.Create(Self);
   HourButton.Parent := ManualGroup;
-  HourButton.Left := 240;
-  HourButton.Top := 20;
-  HourButton.Width := 75;
-  HourButton.Height := 25;
+  HourButton.Left := 270;
+  HourButton.Top := 21;
+  HourButton.Width := 85;
+  HourButton.Height := 26;
   HourButton.Caption := 'hour(s)';
   HourButton.OnClick := @ManualHoursClick;
 
   OrLabel := TLabel.Create(Self);
   OrLabel.Parent := ManualGroup;
   OrLabel.Left := 12;
-  OrLabel.Top := 55;
+  OrLabel.Top := 63;
   OrLabel.Caption := 'or:';
 
   Panel2 := TPanel.Create(Self);
   Panel2.Parent := ManualGroup;
   Panel2.Left := 25;
-  Panel2.Top := 45;
-  Panel2.Width := 325;
-  Panel2.Height := 57;
+  Panel2.Top := 53;
+  Panel2.Width := 350;
+  Panel2.Height := 52;
   Panel2.BevelOuter := bvLowered;
 
   DateInputLabel := TLabel.Create(Self);
   DateInputLabel.Parent := ManualGroup;
-  DateInputLabel.Left := 32;
-  DateInputLabel.Top := 53;
+  DateInputLabel.Left := 34;
+  DateInputLabel.Top := 65;
   DateInputLabel.Caption := 'Date:';
 
-  FDateEdit := TEdit.Create(Self);
-  FDateEdit.Parent := ManualGroup;
-  FDateEdit.Left := 70;
-  FDateEdit.Top := 50;
-  FDateEdit.Width := 116;
-  FDateEdit.Height := 21;
+  FDatePicker := TDateTimePicker.Create(Self);
+  FDatePicker.Parent := ManualGroup;
+  FDatePicker.Left := 72;
+  FDatePicker.Top := 61;
+  FDatePicker.Width := 125;
+  FDatePicker.Height := 24;
+  FDatePicker.Kind := dtkDate;
 
   TimeInputLabel := TLabel.Create(Self);
   TimeInputLabel.Parent := ManualGroup;
-  TimeInputLabel.Left := 194;
-  TimeInputLabel.Top := 53;
+  TimeInputLabel.Left := 206;
+  TimeInputLabel.Top := 65;
   TimeInputLabel.Caption := 'Time:';
 
-  FTimeEdit := TEdit.Create(Self);
-  FTimeEdit.Parent := ManualGroup;
-  FTimeEdit.Left := 232;
-  FTimeEdit.Top := 50;
-  FTimeEdit.Width := 110;
-  FTimeEdit.Height := 21;
+  FTimePicker := TDateTimePicker.Create(Self);
+  FTimePicker.Parent := ManualGroup;
+  FTimePicker.Left := 246;
+  FTimePicker.Top := 61;
+  FTimePicker.Width := 92;
+  FTimePicker.Height := 24;
+  FTimePicker.Kind := dtkTime;
 
   OkButton := TButton.Create(Self);
   OkButton.Parent := ManualGroup;
-  OkButton.Left := 268;
-  OkButton.Top := 75;
-  OkButton.Width := 75;
-  OkButton.Height := 25;
+  OkButton.Left := 342;
+  OkButton.Top := 60;
+  OkButton.Width := 30;
+  OkButton.Height := 26;
   OkButton.Caption := 'OK';
   OkButton.OnClick := @ExactOkClick;
 
   TestButton := TButton.Create(Self);
   TestButton.Parent := Self;
-  TestButton.Left := 173;
-  TestButton.Top := 230;
-  TestButton.Width := 106;
-  TestButton.Height := 25;
+  TestButton.Left := 175;
+  TestButton.Top := 264;
+  TestButton.Width := 120;
+  TestButton.Height := 26;
   TestButton.Caption := '20 seconds beep';
   TestButton.OnClick := @BeepTestClick;
 
   ExitButton := TButton.Create(Self);
   ExitButton.Parent := Self;
-  ExitButton.Left := 381;
-  ExitButton.Top := 231;
+  ExitButton.Left := 402;
+  ExitButton.Top := 264;
   ExitButton.Width := 75;
-  ExitButton.Height := 25;
+  ExitButton.Height := 26;
   ExitButton.Caption := 'Exit';
   ExitButton.OnClick := @ExitClick;
 
   ScheduledTitle := TLabel.Create(Self);
   ScheduledTitle.Parent := Self;
-  ScheduledTitle.Left := 5;
-  ScheduledTitle.Top := 260;
+  ScheduledTitle.Left := 12;
+  ScheduledTitle.Top := 300;
   ScheduledTitle.Caption := 'Scheduled time:';
 
   FScheduledLabel := TLabel.Create(Self);
   FScheduledLabel.Parent := Self;
-  FScheduledLabel.Left := 85;
-  FScheduledLabel.Top := 260;
+  FScheduledLabel.Left := 120;
+  FScheduledLabel.Top := 300;
+  FScheduledLabel.Width := 350;
   FScheduledLabel.Caption := '-';
 
   ActivatedTitle := TLabel.Create(Self);
   ActivatedTitle.Parent := Self;
-  ActivatedTitle.Left := 5;
-  ActivatedTitle.Top := 275;
+  ActivatedTitle.Left := 12;
+  ActivatedTitle.Top := 318;
   ActivatedTitle.Caption := 'Activated on:';
 
   FActivatedLabel := TLabel.Create(Self);
   FActivatedLabel.Parent := Self;
-  FActivatedLabel.Left := 70;
-  FActivatedLabel.Top := 275;
+  FActivatedLabel.Left := 120;
+  FActivatedLabel.Top := 318;
+  FActivatedLabel.Width := 350;
   FActivatedLabel.Caption := '-';
 end;
 
@@ -289,7 +304,7 @@ begin
   Result.Caption := ACaption;
   Result.Left := ALeft;
   Result.Top := ATop;
-  Result.Width := 75;
+  Result.Width := 88;
   Result.Height := 25;
   Result.Tag := ASeconds;
   Result.OnClick := @PresetButtonClick;
@@ -343,6 +358,23 @@ begin
   RefreshLabels;
 end;
 
+procedure TMainForm.KeepOnTopTimerTick(Sender: TObject);
+begin
+  if Visible then
+    ForceStayOnTop(Self);
+  if FStatusForm.Visible then
+    ForceStayOnTop(FStatusForm);
+end;
+
+procedure TMainForm.NumericKeyPress(Sender: TObject; var Key: char);
+begin
+  if not (Key in [#8, #9, #13, '0'..'9']) then
+  begin
+    Beep;
+    Key := #0;
+  end;
+end;
+
 procedure TMainForm.NameEditChange(Sender: TObject);
 begin
   Caption := CleanReminderName;
@@ -360,6 +392,7 @@ begin
   WindowState := wsNormal;
   FormStyle := fsStayOnTop;
   BringToFront;
+  ForceStayOnTop(Self);
   FManualSpin.SetFocus;
 end;
 
@@ -419,43 +452,12 @@ begin
 end;
 
 function TMainForm.TryInputDateTime(out ADueAt: TDateTime): Boolean;
-var
-  DateText, TimeText: string;
-  Y, M, D, H, N, Sec: Word;
 begin
-  Result := False;
-  ADueAt := 0;
-  DateText := Trim(FDateEdit.Text);
-  TimeText := Trim(FTimeEdit.Text);
-  Sec := 0;
-
+  Result := True;
   try
-    if (Length(DateText) <> 10) or (DateText[5] <> '-') or (DateText[8] <> '-') then
-      Exit;
-
-    if not (Length(TimeText) in [5, 8]) then
-      Exit;
-
-    if (TimeText[3] <> ':') then
-      Exit;
-
-    if (Length(TimeText) = 8) and (TimeText[6] <> ':') then
-      Exit;
-
-    Y := StrToInt(Copy(DateText, 1, 4));
-    M := StrToInt(Copy(DateText, 6, 2));
-    D := StrToInt(Copy(DateText, 9, 2));
-    H := StrToInt(Copy(TimeText, 1, 2));
-    N := StrToInt(Copy(TimeText, 4, 2));
-    if Length(TimeText) = 8 then
-      Sec := StrToInt(Copy(TimeText, 7, 2));
-
-    if (H > 23) or (N > 59) or (Sec > 59) then
-      Exit;
-
-    ADueAt := EncodeDate(Y, M, D) + EncodeTime(H, N, Sec, 0);
-    Result := True;
+    ADueAt := DateOf(FDatePicker.DateTime) + TimeOf(FTimePicker.DateTime);
   except
+    ADueAt := 0;
     Result := False;
   end;
 end;
@@ -482,6 +484,7 @@ begin
   WindowState := wsNormal;
   FormStyle := fsStayOnTop;
   BringToFront;
+  ForceStayOnTop(Self);
   FManualSpin.Value := 1;
   FManualSpin.SetFocus;
 end;
@@ -509,8 +512,8 @@ var
   NextValue: TDateTime;
 begin
   NextValue := IncMinute(Now, 1);
-  FDateEdit.Text := FormatDateTime('yyyy"-"mm"-"dd', DateOf(NextValue));
-  FTimeEdit.Text := FormatDateTime('hh":"nn":"ss', TimeOf(NextValue));
+  FDatePicker.DateTime := DateOf(NextValue);
+  FTimePicker.DateTime := TimeOf(NextValue);
 end;
 
 procedure TMainForm.RefreshLabels;
@@ -521,7 +524,7 @@ begin
   if FAlarm.ActivatedAt > 0 then
     FActivatedLabel.Caption := TimeToStr(FAlarm.ActivatedAt) + ', ' + DateToStr(FAlarm.ActivatedAt)
   else
-    FActivatedLabel.Caption := TimeToStr(Now) + ', ' + DateToStr(Now);
+    FActivatedLabel.Caption := '-';
 
   if FAlarm.DueAt > 0 then
     FScheduledLabel.Caption := TimeToStr(FAlarm.DueAt) + ', ' + DateToStr(FAlarm.DueAt)
@@ -548,12 +551,27 @@ begin
     if LateText <> '' then
     begin
       FActivatedLabel.Font.Color := clRed;
-      FActivatedLabel.Caption := TimeToStr(Now) + ', ' + DateToStr(Now) + ' (' + LateText + ')';
+      FActivatedLabel.Caption := FActivatedLabel.Caption + ' (' + LateText + ')';
     end;
   end;
 
   if FAlarm.Active then
     FStatusForm.UpdateTrayHint(FAlarm.Name + '; next alarm time: ' + TimeToStr(FAlarm.DueAt));
+end;
+
+procedure TMainForm.ForceStayOnTop(AForm: TCustomForm);
+begin
+  if not Assigned(AForm) then
+    Exit;
+
+  AForm.FormStyle := fsStayOnTop;
+  {$IFDEF MSWINDOWS}
+  if AForm.HandleAllocated then
+    SetWindowPos(AForm.Handle, HWND_TOPMOST, 0, 0, 0, 0,
+      SWP_NOMOVE or SWP_NOSIZE or SWP_NOACTIVATE);
+  {$ELSE}
+  AForm.BringToFront;
+  {$ENDIF}
 end;
 
 procedure TMainForm.DoClose(var CloseAction: TCloseAction);
