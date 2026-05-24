@@ -297,29 +297,22 @@ procedure TMainForm.StartAtExactTime(const AText: string);
 var
   DueAt: TDateTime;
   Y, M, D, H, N, S: Word;
-  Text: string;
+  InputText: string;
 begin
-  Text := Trim(AText);
-  if Length(Text) <> 19 then
+  InputText := Trim(AText);
+  if Length(InputText) <> 19 then
   begin
     ShowMessage('Please use this format: yyyy-mm-dd hh:mm:ss');
     Exit;
   end;
 
   try
-    Y := StrToInt(Copy(Text, 1, 4));
-    M := StrToInt(Copy(Text, 6, 2));
-    D := StrToInt(Copy(Text, 9, 2));
-    H := StrToInt(Copy(Text, 12, 2));
-    N := StrToInt(Copy(Text, 15, 2));
-    S := StrToInt(Copy(Text, 18, 2));
-
-    if (not TryEncodeDate(Y, M, D, DueAt)) or
-       (not TryEncodeTime(H, N, S, 0, DueAt)) then
-    begin
-      ShowMessage('That date/time is not valid.');
-      Exit;
-    end;
+    Y := StrToInt(Copy(InputText, 1, 4));
+    M := StrToInt(Copy(InputText, 6, 2));
+    D := StrToInt(Copy(InputText, 9, 2));
+    H := StrToInt(Copy(InputText, 12, 2));
+    N := StrToInt(Copy(InputText, 15, 2));
+    S := StrToInt(Copy(InputText, 18, 2));
 
     DueAt := EncodeDate(Y, M, D) + EncodeTime(H, N, S, 0);
 
