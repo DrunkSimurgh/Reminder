@@ -10,7 +10,6 @@ uses
   Forms,
   MainForm;
 
-{$R *.res}
 
 begin
   RequireDerivedFormResource := False;

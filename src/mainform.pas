@@ -314,11 +314,14 @@ begin
     N := StrToInt(Copy(Text, 15, 2));
     S := StrToInt(Copy(Text, 18, 2));
 
-    if not TryEncodeDateTime(Y, M, D, H, N, S, 0, DueAt) then
+    if (not TryEncodeDate(Y, M, D, DueAt)) or
+       (not TryEncodeTime(H, N, S, 0, DueAt)) then
     begin
       ShowMessage('That date/time is not valid.');
       Exit;
     end;
+
+    DueAt := EncodeDate(Y, M, D) + EncodeTime(H, N, S, 0);
 
     FAlarm.StartAt(DueAt, CleanReminderName);
     TSettingsStore.SaveFrom(FAlarm);
